@@ -9,9 +9,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Compilar
-        run: make
+        run: |
+          MK=$(find . -maxdepth 3 -name Makefile -not -path './.git/*' | head -n 1)
+          if [ -z "$MK" ]; then
+            echo "No encuentro el Makefile. Archivos del repositorio:"
+            find . -maxdepth 3 -not -path './.git/*'
+            exit 1
+          fi
+          cd "$(dirname "$MK")"
+          make
       - uses: actions/upload-artifact@v4
         with:
           name: DiscoAleatorio-3ds
           path: |
-            DiscoAleatorio.3dsx
+            **/DiscoAleatorio.3dsx
