@@ -3,10 +3,12 @@ DISCO ALEATORIO - VERSION NINTENDO 3DS
 Pantalla superior: el disco que te toca (con el disco girando).
 Pantalla tactil: elegir al azar, filtrar por formato, anadir, listar, editar, borrar, tema e idioma.
 Sin Discogs en esta version.
+Modo ARTISTA: en vez de un album, elige un artista al azar y muestra cuantos albumes tienes suyos.
 
 CONTROLES
   A ............ elegir disco al azar         X ... anadir disco (teclado de la consola)
   Y ............ ver la lista                 SELECT ... cambiar idioma (EN/ES)
+  Cruceta izq/der (en la pantalla principal) ... elegir ALBUM o ARTISTA
   L / R ........ cambiar de tema              START ... salir
   En la lista: cruceta (arriba/abajo, izq/der = pagina), A abre el disco, X cambia el orden,
   B vuelve. Tambien puedes arrastrar con el lapiz/dedo y tocar un disco.
@@ -20,6 +22,9 @@ COMO OBTENER EL .3dsx (hace falta compilarlo; no va precompilado)
        (incluida la carpeta oculta .github).
     2. Pestana "Actions" > ultimo "Build 3DS" > abajo, "Artifacts" > DiscoAleatorio-3ds.
     3. Dentro esta DiscoAleatorio.3dsx.
+    Si no aparece "Build 3DS": la carpeta oculta .github no se subio. Crea en GitHub el archivo
+    .github/workflows/build.yml (Add file > Create new file) y pega el contenido de
+    PEGAR-EN-GITHUB-build.yml.txt. Los archivos deben quedar en la RAIZ del repositorio.
   Opcion B - en tu PC
     1. Instala devkitPro con el paquete "3ds-dev" (devkitpro.org).
     2. En una terminal de devkitPro, dentro de esta carpeta:  make

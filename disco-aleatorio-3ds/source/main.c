@@ -39,13 +39,13 @@ static const Theme THEMES[7] = {
 static const u32 FMTC[4] = { RGB(224,165,38), RGB(76,194,175), RGB(232,114,95), RGB(169,155,214) };
 
 typedef struct {
-  const char *pick,*add,*list,*theme,*lang,*back,*sort,*edit,*del,*sure,*cancel,*now,*hint,*records,*newtheme,*prev,*none,*artist,*album,*format,*langname,*full;
+  const char *pick,*add,*list,*theme,*lang,*back,*sort,*edit,*del,*sure,*cancel,*now,*hint,*records,*newtheme,*prev,*none,*artist,*album,*format,*langname,*full,*albc;
   const char *fmt[4]; const char *sortn[4];
 } Str;
 static const Str STR[2] = {
- { "Pick a random record","Add","List","Theme","Language","Back","Sort","Edit","Delete","Sure?","Cancel","Now playing","Press A to pick one","records","New theme unlocked: Blocky Hell!","Before:","No records match the filters","Artist","Album","Format","English","Collection is full",
+ { "Pick a random record","Add","List","Theme","Language","Back","Sort","Edit","Delete","Sure?","Cancel","Now playing","Press A to pick one","records","New theme unlocked: Blocky Hell!","Before:","No records match the filters","Artist","Album","Format","English","Collection is full","Albums: %d",
    {"Vinyl","CD","Cassette","Other"}, {"Recent","Artist","Album","Format"} },
- { "Elegir disco al azar","Anadir","Lista","Tema","Idioma","Volver","Orden","Editar","Borrar","Seguro?","Cancelar","Ahora suena","Pulsa A para elegir","discos","Nuevo tema desbloqueado: Blocky Hell!","Antes:","Ningun disco con esos filtros","Artista","Album","Formato","Espanol","La coleccion esta llena",
+ { "Elegir disco al azar","Anadir","Lista","Tema","Idioma","Volver","Orden","Editar","Borrar","Seguro?","Cancelar","Ahora suena","Pulsa A para elegir","discos","Nuevo tema desbloqueado: Blocky Hell!","Antes:","Ningun disco con esos filtros","Artista","Album","Formato","Espanol","La coleccion esta llena","Albumes: %d",
    {"Vinilo","CD","Casete","Otro"}, {"Recientes","Artista","Album","Formato"} },
 };
 static int lang = 0;
@@ -58,6 +58,7 @@ static int dispIdx = -1, pickIdx = -1, lastIdx = -1, finalIdx = -1, shuf = 0;
 static float spin = 0;
 static char prevTitle[64] = "";
 static char toast[96] = ""; static int toastT = 0;
+static int modeArtist = 0;
 static int sortMode = 0, order[MAXA], nOrd = 0, scroll = 0, cur = 0, sel = -1, delArmed = 0;
 static int editIdx = -1; static char tmpA[64], tmpT[64];
 static C2D_TextBuf gBuf, mBuf;
@@ -103,13 +104,13 @@ static void saveAlbums(void){
 }
 static void saveSettings(void){
   FILE *f = fopen(FILE_SET,"w"); if(!f) return;
-  fprintf(f,"%d %d %d %d\n",themeIdx,lang,mask,netherOn); fclose(f);
+  fprintf(f,"%d %d %d %d %d\n",themeIdx,lang,mask,netherOn,modeArtist); fclose(f);
 }
 static void loadAll(void){
   mkdir("sdmc:/3ds",0777); mkdir(DIR_PATH,0777);
   int have = 0;
   FILE *f = fopen(FILE_SET,"r");
-  if(f){ int t,l,m,n; if(fscanf(f,"%d %d %d %d",&t,&l,&m,&n)==4){ themeIdx=t; lang=l?1:0; mask=m&15; netherOn=n?1:0; have=1; } fclose(f); }
+  if(f){ int t,l,m,n,md=0; if(fscanf(f,"%d %d %d %d %d",&t,&l,&m,&n,&md)>=4){ themeIdx=t; lang=l?1:0; mask=m&15; netherOn=n?1:0; modeArtist=md?1:0; have=1; } fclose(f); }
   if(!have){
     u8 sl; cfguInit(); if(R_SUCCEEDED(CFGU_GetSystemLanguage(&sl)) && sl==CFG_LANGUAGE_ES) lang=1; cfguExit();
   }
@@ -153,8 +154,34 @@ static int candidates(int *c, int skipLast){
   for(int i=0;i<nAlb;i++) if((mask&(1<<albums[i].fmt)) && !(skipLast&&i==lastIdx)) c[n++]=i;
   return n;
 }
+static int sameArtist(int i,int j){ return strcasecmp(albums[i].artist,albums[j].artist)==0; }
+static void artInfo(int idx,int *count,char *titles,size_t cap){
+  int n=0; size_t len=0; titles[0]=0;
+  for(int i=0;i<nAlb;i++) if((mask&(1<<albums[i].fmt)) && sameArtist(i,idx)){
+    n++; size_t tl=strlen(albums[i].title);
+    if(len+tl+4<cap){ if(len){ strcat(titles," / "); len+=3; } strcat(titles,albums[i].title); len+=tl; }
+  }
+  *count=n;
+}
+static int pickArtistIdx(void){
+  int c[MAXA], n=candidates(c,0); if(!n) return -1;
+  int firstOf[MAXA], nu=0;
+  for(int a=0;a<n;a++){
+    int dup=0;
+    for(int b=0;b<nu;b++) if(sameArtist(c[a],firstOf[b])){ dup=1; break; }
+    if(!dup) firstOf[nu++]=c[a];
+  }
+  int ok[MAXA], no=0;
+  for(int b=0;b<nu;b++) if(!(nu>1 && lastIdx>=0 && lastIdx<nAlb && sameArtist(firstOf[b],lastIdx))) ok[no++]=firstOf[b];
+  return ok[rand()%no];
+}
 static void doPick(void){
   if(shuf>0) return;
+  if(modeArtist){
+    int f=pickArtistIdx();
+    if(f<0){ setToast(TX.none); return; }
+    finalIdx=f; shuf=24; return;
+  }
   int c[MAXA], n = candidates(c,1);
   if(n==0) n = candidates(c,0);
   if(n==0){ setToast(TX.none); return; }
@@ -228,14 +255,25 @@ static void drawTop(void){
   const Album *d = (dispIdx>=0&&dispIdx<nAlb)?&albums[dispIdx]:NULL;
   drawDisc(112,128,d?FMTC[d->fmt]:T->acc);
   if(d){
-    char lines[3][96]; int n=wrapLines(d->title,0.7f,172,lines,3);
+    char lines[3][96]; int n=wrapLines(modeArtist?d->artist:d->title,0.7f,172,lines,3);
     float y=52;
     for(int i=0;i<n;i++){ drawText(lines[i],206,y,0.7f,T->txt); y+=LH*0.7f; }
-    char a[96]; fitText(d->artist,0.55f,172,a);
-    drawText(a,206,y+6,0.55f,T->dim);
-    Rc tag={206,y+6+LH*0.55f+8,110,22};
+    char tagTxt[48]; float yAfter;
+    if(modeArtist){
+      int cnt=0; char tl[220]; artInfo(dispIdx,&cnt,tl,sizeof tl);
+      snprintf(tagTxt,sizeof tagTxt,TX.albc,cnt);
+      char sub[2][96]; int m=wrapLines(tl,0.42f,172,sub,2);
+      for(int k=0;k<m;k++) drawText(sub[k],206,y+6+k*LH*0.42f,0.42f,T->dim);
+      yAfter=y+6+m*LH*0.42f;
+    } else {
+      char a[96]; fitText(d->artist,0.55f,172,a);
+      drawText(a,206,y+6,0.55f,T->dim);
+      yAfter=y+6+LH*0.55f;
+      snprintf(tagTxt,sizeof tagTxt,"%s",TX.fmt[d->fmt]);
+    }
+    Rc tag={206,yAfter+8,110,22};
     frameR(tag.x,tag.y,tag.w,tag.h,2,T->edge,FMTC[d->fmt]);
-    drawTextCC(TX.fmt[d->fmt],tag.x+tag.w/2,tag.y+tag.h/2,0.5f,RGB(11,31,51));
+    drawTextCC(tagTxt,tag.x+tag.w/2,tag.y+tag.h/2,0.5f,RGB(11,31,51));
     if(prevTitle[0] && shuf==0){
       char pv[96],pt[64]; fitText(prevTitle,0.42f,160,pt); snprintf(pv,sizeof pv,"%s %s",TX.prev,pt);
       drawText(pv,206,198,0.42f,T->dim);
@@ -260,6 +298,8 @@ static void drawBottom(const Rc *R){
       int on = mask&(1<<i);
       button(R[1+i],TX.fmt[i],on?FMTC[i]:T->pan,on?RGB(11,31,51):T->dim,on?T->edge:T->dim,0.42f);
     }
+    button(R[9],TX.album,!modeArtist?T->acc:T->pan,!modeArtist?T->accTxt:T->dim,!modeArtist?T->edge:T->dim,0.5f);
+    button(R[10],TX.artist,modeArtist?T->acc:T->pan,modeArtist?T->accTxt:T->dim,modeArtist?T->edge:T->dim,0.5f);
     button(R[5],TX.add,T->btn,T->btnTxt,T->edge,0.6f);
     button(R[6],TX.list,T->btn,T->btnTxt,T->edge,0.6f);
     snprintf(buf,sizeof buf,"%s: %s",TX.theme,THEMES[themeIdx].name);
@@ -267,7 +307,7 @@ static void drawBottom(const Rc *R){
     snprintf(buf,sizeof buf,"%s: %s",TX.lang,TX.langname);
     button(R[8],buf,T->btn,T->btnTxt,T->edge,0.45f);
     snprintf(buf,sizeof buf,"%d %s",nAlb,TX.records);
-    drawTextCC(buf,160,222,0.4f,T->dim);
+    drawTextCC(buf,160,226,0.4f,T->dim);
   } else if(state==ST_LIST){
     frameR(4,4,312,232,3,T->edge,T->pan);
     button(R[0],TX.back,T->btn,T->btnTxt,T->edge,0.5f);
@@ -359,9 +399,10 @@ static void keepCurVisible(void){
 
 static void layout(Rc *R){
   if(state==ST_MAIN){
-    R[0]=(Rc){20,18,280,56};
-    for(int i=0;i<4;i++) R[1+i]=(Rc){20+i*71,84,65,30};
-    R[5]=(Rc){20,124,137,40}; R[6]=(Rc){163,124,137,40}; R[7]=(Rc){20,172,137,40}; R[8]=(Rc){163,172,137,40};
+    R[0]=(Rc){20,12,280,46};
+    for(int i=0;i<4;i++) R[1+i]=(Rc){20+i*71,100,65,28};
+    R[5]=(Rc){20,134,137,38}; R[6]=(Rc){163,134,137,38}; R[7]=(Rc){20,178,137,38}; R[8]=(Rc){163,178,137,38};
+    R[9]=(Rc){20,64,138,28}; R[10]=(Rc){162,64,138,28};
   } else if(state==ST_LIST){
     R[0]=(Rc){10,10,70,28}; R[1]=(Rc){88,10,222,28};
   } else if(state==ST_ITEM){
@@ -380,7 +421,7 @@ int main(int argc, char **argv){
   srand((unsigned)(time(NULL) ^ (unsigned)osGetTime()));
   loadAll(); buildOrder();
 
-  Rc R[9]; int touchStartY=0, touchLastY=0, moved=0, accum=0, startIn=0, startX=0, prevState=-1;
+  Rc R[11]; int touchStartY=0, touchLastY=0, moved=0, accum=0, startIn=0, startX=0, prevState=-1;
   while(aptMainLoop()){
     hidScanInput();
     u32 kDown=hidKeysDown(), kHeld=hidKeysHeld(), kUp=hidKeysUp();
@@ -398,9 +439,12 @@ int main(int argc, char **argv){
       if(kDown&KEY_X) startAddOrEdit(-1);
       if(kDown&KEY_Y){ buildOrder(); cur=0; scroll=0; state=ST_LIST; }
       if(kDown&KEY_SELECT){ lang=!lang; saveSettings(); }
+      if(kDown&(KEY_DLEFT|KEY_DRIGHT)){ modeArtist=!modeArtist; saveSettings(); }
       if(tapped){
         if(hit(R[0],tx,ty)) doPick();
         for(int i=0;i<4;i++) if(hit(R[1+i],tx,ty)){ mask^=(1<<i); if(!mask) mask=1<<i; saveSettings(); }
+        if(hit(R[9],tx,ty)){ modeArtist=0; saveSettings(); }
+        if(hit(R[10],tx,ty)){ modeArtist=1; saveSettings(); }
         if(hit(R[5],tx,ty)) startAddOrEdit(-1);
         if(hit(R[6],tx,ty)){ buildOrder(); cur=0; scroll=0; state=ST_LIST; }
         if(hit(R[7],tx,ty)) nextTheme(1);
@@ -451,7 +495,7 @@ int main(int argc, char **argv){
       shuf--;
       if(shuf>0 && shuf%3==0){ int c[MAXA], n=candidates(c,0); if(n) dispIdx=c[rand()%n]; }
       if(shuf==0){
-        if(pickIdx>=0 && pickIdx<nAlb) snprintf(prevTitle,sizeof prevTitle,"%s",albums[pickIdx].title);
+        if(pickIdx>=0 && pickIdx<nAlb) snprintf(prevTitle,sizeof prevTitle,"%s",modeArtist?albums[pickIdx].artist:albums[pickIdx].title);
         dispIdx=pickIdx=lastIdx=finalIdx;
       }
     }
